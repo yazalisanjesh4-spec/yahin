@@ -4,29 +4,22 @@ import { useCart } from "@/context/CartContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { auth, db } from "@/lib/firebase";
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 
 export default function CheckoutPage() {
   const { cartItems } = useCart();
   const router = useRouter();
 
   const totalAmount = cartItems.reduce(
-    (sum, item) => sum + item.price,
+    (sum, item) => sum + Number(item.price || 0),
     0
   );
 
-  // Cart empty guard
+  // Guard: empty cart
   if (cartItems.length === 0) {
     return (
       <div className="text-center py-20">
-        <h2 className="text-xl font-semibold">
-          Your cart is empty
-        </h2>
+        <h2 className="text-xl font-semibold">Your cart is empty</h2>
         <Link
           href="/"
           className="inline-block mt-6 text-green-600 font-semibold"
@@ -46,7 +39,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Fetch user profile (phone + address)
+    // Fetch user profile
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
 
@@ -58,21 +51,30 @@ export default function CheckoutPage() {
 
     const userData = userSnap.data();
 
-    // Create order in Firestore
+    // 🔥 FIX: normalize order items (include imageUrl explicitly)
+    const orderItems = cartItems.map((item) => ({
+      id: item.id,
+      title: item.title,
+      size: item.size || "",
+      price: Number(item.price || 0),
+      imageUrl: item.imageUrl || "",
+    }));
+
+    // Create order
     await addDoc(collection(db, "orders"), {
       userId: user.uid,
-      userName: userData.name,
-      userEmail: userData.email,
-      phoneNumber: userData.phone,
-      address: userData.address,
+      userName: userData.name || "",
+      userEmail: userData.email || user.email || "",
+      phoneNumber: userData.phone || "",
+      address: userData.address || "",
 
-      items: cartItems,
+      items: orderItems,
       totalAmount,
       status: "Payment verification pending",
       createdAt: new Date(),
     });
 
-    // Clear cart (localStorage)
+    // Clear cart
     localStorage.removeItem("yahin_cart");
 
     router.push("/order-confirmation");
@@ -80,15 +82,11 @@ export default function CheckoutPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">
-        Checkout
-      </h1>
+      <h1 className="text-2xl font-bold mb-6">Checkout</h1>
 
       {/* ORDER SUMMARY */}
       <div className="bg-white p-4 rounded-lg border mb-6">
-        <h2 className="font-semibold mb-4">
-          Order Summary
-        </h2>
+        <h2 className="font-semibold mb-4">Order Summary</h2>
 
         {cartItems.map((item) => (
           <div
@@ -97,27 +95,23 @@ export default function CheckoutPage() {
           >
             <div className="flex items-center">
               <img
-                src={item.imageUrl}
+                src={item.imageUrl || "https://via.placeholder.com/100"}
                 alt={item.title}
                 className="w-12 h-12 object-cover rounded mr-3"
                 onError={(e) => {
-                  e.target.src =
+                  e.currentTarget.src =
                     "https://via.placeholder.com/100x100?text=No+Image";
                 }}
               />
               <div>
-                <p className="text-sm font-medium">
-                  {item.title}
-                </p>
+                <p className="text-sm font-medium">{item.title}</p>
                 <p className="text-xs text-gray-500">
-                  Size: {item.size}
+                  Size: {item.size || "N/A"}
                 </p>
               </div>
             </div>
 
-            <span className="text-sm font-semibold">
-              ₹{item.price}
-            </span>
+            <span className="text-sm font-semibold">₹{item.price}</span>
           </div>
         ))}
 
@@ -131,18 +125,15 @@ export default function CheckoutPage() {
         </p>
       </div>
 
-      {/* PAYMENT SECTION */}
+      {/* PAYMENT */}
       <div className="bg-white p-4 rounded-lg border">
-        <h2 className="font-semibold mb-2">
-          Pay using UPI
-        </h2>
+        <h2 className="font-semibold mb-2">Pay using UPI</h2>
 
         <p className="text-sm text-gray-600 mb-4">
           Scan the QR code below and pay the exact amount.
           After payment, click “I have paid”.
         </p>
 
-        {/* UPI QR */}
         <div className="flex justify-center mb-4">
           <img
             src="/upi-qr.png"
@@ -152,8 +143,7 @@ export default function CheckoutPage() {
         </div>
 
         <p className="text-sm text-center text-gray-700 mb-4">
-          Pay <strong>₹{totalAmount}</strong> to{" "}
-          <strong>Yahin</strong>
+          Pay <strong>₹{totalAmount}</strong> to <strong>Yahin</strong>
         </p>
 
         <button
