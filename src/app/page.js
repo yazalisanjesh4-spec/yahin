@@ -1,53 +1,81 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import Link from "next/link";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
 
 export default function HomePage() {
   const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(
+    // 🔒 Show only available products
+    const q = query(
       collection(db, "products"),
-      (snapshot) => {
-        setProducts(
-          snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }))
-        );
-      }
+      where("isAvailable", "==", true)
     );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setProducts(data);
+      setLoading(false);
+    });
 
     return () => unsub();
   }, []);
 
+  if (loading) {
+    return (
+      <p className="text-center text-gray-500 mt-10">
+        Loading products…
+      </p>
+    );
+  }
+
   return (
     <div>
-      <h2 className="text-xl font-bold mb-4">
-        Available near you
-      </h2>
+      {products.length === 0 && (
+        <p className="text-center text-gray-500 mt-10">
+          No products available right now
+        </p>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {products.map((product) => (
           <Link
             key={product.id}
             href={`/product/${product.id}`}
-            className="bg-white border rounded-lg p-4"
+            className="bg-white border rounded-lg p-3 hover:shadow-sm"
           >
             <img
               src={product.imageUrl}
-              className="w-full h-48 object-cover rounded"
+              alt={product.title}
+              className="w-full h-40 object-cover rounded"
+              onError={(e) => {
+                e.currentTarget.src =
+                  "https://via.placeholder.com/300x300?text=No+Image";
+              }}
             />
-            <h3 className="font-semibold mt-2">
+
+            <h3 className="font-medium text-sm mt-2">
               {product.title}
             </h3>
-            <p className="text-sm text-gray-500">
+
+            <p className="text-xs text-gray-500">
               Size: {product.size}
             </p>
-            <p className="font-bold mt-1">
+
+            <p className="font-bold text-sm mt-1">
               ₹{product.price}
             </p>
           </Link>

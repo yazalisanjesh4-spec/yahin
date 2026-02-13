@@ -3,57 +3,44 @@
 import "./globals.css";
 import { CartProvider } from "@/context/CartContext";
 import { OrderProvider } from "@/context/OrderContext";
-
+import Navbar from "@/components/Navbar";
 import { usePathname } from "next/navigation";
 
 export default function RootLayout({ children }) {
   const pathname = usePathname();
 
-  const hideHeader =
-    pathname === "/login" || pathname === "/address";
+  // Hide header on login page
+  const hideHeader = pathname === "/login";
 
   return (
     <html lang="en">
       <body className="bg-gray-50 text-gray-900">
+        {/* HEADER */}
         {!hideHeader && (
           <header className="bg-white">
-            <div className="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-extrabold text-green-600">
-                  Yahin
-                </h1>
-                <p className="text-sm text-gray-500">
-                  Clothes delivered from nearby shops in under 2 hours
-                </p>
-              </div>
-
-              <div className="flex gap-4 text-sm font-semibold">
-                <a
-                  href="/orders"
-                  className="text-gray-700 hover:text-green-600"
-                >
-                  Orders
-                </a>
-                <a
-                  href="/cart"
-                  className="text-gray-700 hover:text-green-600"
-                >
-                  Cart
-                </a>
-              </div>
+            <div className="max-w-7xl mx-auto px-4 py-4">
+              <h1 className="text-4xl font-extrabold text-blue-400">
+                Yahin!
+              </h1>
+              <p className="text-xs text-gray-500 mt-3">
+                Get your favourite clothes delivered in less than 90 minutes
+              </p>
             </div>
           </header>
         )}
 
-        
-          <OrderProvider>
-            <CartProvider>
-              <main className="max-w-7xl mx-auto px-4 py-6">
-                {children}
-              </main>
-            </CartProvider>
-          </OrderProvider>
-       
+        {/* PROVIDERS */}
+        <OrderProvider>
+          <CartProvider>
+            {/* PAGE CONTENT */}
+            <main className="max-w-7xl mx-auto px-4 py-6 pb-20">
+              {children}
+            </main>
+          </CartProvider>
+        </OrderProvider>
+
+        {/* BOTTOM NAVBAR */}
+        <Navbar />
       </body>
     </html>
   );

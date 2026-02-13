@@ -53,6 +53,7 @@ export default function AdminProductsPage() {
       price: Number(form.price),
       shopName: form.shopName,
       imageUrl: form.imageUrl,
+      isAvailable: true,
       createdAt: new Date(),
     });
 
