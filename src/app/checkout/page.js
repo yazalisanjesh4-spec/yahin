@@ -1,188 +1,261 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { auth, db } from "@/lib/firebase";
 import {
-  addDoc,
   collection,
+  getDocs,
   doc,
-  getDoc,
-  updateDoc,
+  runTransaction,
+  serverTimestamp,
 } from "firebase/firestore";
+import Link from "next/link";
 
 export default function CheckoutPage() {
   const { cartItems } = useCart();
   const router = useRouter();
 
+  const [currentUser, setCurrentUser] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [placingOrder, setPlacingOrder] = useState(false);
+
   const totalAmount = cartItems.reduce(
-    (sum, item) => sum + Number(item.price || 0),
+    (sum, item) => sum + item.price,
     0
   );
 
-  // Guard: empty cart
+  /* =============================
+     AUTH CHECK
+  ============================== */
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        router.push("/login");
+      } else {
+        setCurrentUser(user);
+      }
+      setLoadingAuth(false);
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  /* =============================
+     FETCH ADDRESSES
+  ============================== */
+  useEffect(() => {
+    const fetchAddresses = async () => {
+      if (!currentUser) return;
+
+      const snapshot = await getDocs(
+        collection(db, "users", currentUser.uid, "addresses")
+      );
+
+      const list = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setAddresses(list);
+
+      if (list.length > 0) {
+        setSelectedAddress(list[0]);
+      }
+    };
+
+    fetchAddresses();
+  }, [currentUser]);
+
+  /* =============================
+     ATOMIC PLACE ORDER
+  ============================== */
+  const handlePlaceOrder = async () => {
+    if (!selectedAddress) {
+      alert("Please select delivery address");
+      return;
+    }
+
+    if (!currentUser) return;
+
+    try {
+      setPlacingOrder(true);
+
+      await runTransaction(db, async (transaction) => {
+
+        // 1️⃣ Check availability
+        for (let item of cartItems) {
+          const productRef = doc(db, "products", item.id);
+          const productSnap = await transaction.get(productRef);
+
+          if (!productSnap.exists()) {
+            throw new Error("Product not found");
+          }
+
+          if (!productSnap.data().isAvailable) {
+            throw new Error("Product already sold");
+          }
+        }
+
+        // 2️⃣ Lock products
+        for (let item of cartItems) {
+          const productRef = doc(db, "products", item.id);
+          transaction.update(productRef, {
+            isAvailable: false,
+          });
+        }
+
+        // 3️⃣ Create order
+        const orderRef = doc(collection(db, "orders"));
+        transaction.set(orderRef, {
+          userId: currentUser.uid,
+          userEmail: currentUser.email,
+          address: selectedAddress,
+          items: cartItems,
+          totalAmount,
+          status: "Payment verification pending",
+          createdAt: serverTimestamp(),
+        });
+
+      });
+
+      localStorage.removeItem("yahin_cart");
+      router.push("/order-confirmation");
+
+    } catch (error) {
+      console.error(error);
+
+      if (error.message === "Product already sold") {
+        alert("Sorry, this product was just sold to another user.");
+      } else {
+        alert("Something went wrong. Please try again.");
+      }
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  /* =============================
+     GUARDS
+  ============================== */
+
+  if (loadingAuth) {
+    return <div className="text-center py-20">Loading...</div>;
+  }
+
   if (cartItems.length === 0) {
     return (
       <div className="text-center py-20">
-        <h2 className="text-xl font-semibold">
+        <h2 className="text-lg font-semibold">
           Your cart is empty
         </h2>
         <Link
           href="/"
-          className="inline-block mt-6 text-green-600 font-semibold"
+          className="text-green-600 font-semibold mt-4 inline-block"
         >
-          Go back to shopping →
+          Go shopping →
         </Link>
       </div>
     );
   }
 
-  const handlePaymentConfirm = async () => {
-    const user = auth.currentUser;
-
-    // Login check
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    // Fetch user profile
-    const userRef = doc(db, "users", user.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (!userSnap.exists()) {
-      alert("Please complete your profile");
-      router.push("/profile");
-      return;
-    }
-
-    const userData = userSnap.data();
-
-    // Normalize order items
-    const orderItems = cartItems.map((item) => ({
-      id: item.id,
-      title: item.title,
-      size: item.size || "",
-      price: Number(item.price || 0),
-      imageUrl:
-        item.imageUrl ||
-        item.image ||
-        item.imageURL ||
-        "",
-    }));
-
-    // 1️⃣ Create order
-    await addDoc(collection(db, "orders"), {
-      userId: user.uid,
-      userName: userData.name || "",
-      userEmail: userData.email || user.email || "",
-      phoneNumber: userData.phone || "",
-      address: userData.address || "",
-      items: orderItems,
-      totalAmount,
-      status: "Payment verification pending",
-      createdAt: new Date(),
-    });
-
-    // 2️⃣ LOCK PRODUCTS (CRITICAL STEP)
-    for (const item of orderItems) {
-      const productRef = doc(db, "products", item.id);
-      await updateDoc(productRef, {
-        isAvailable: false,
-      });
-    }
-
-    // Clear cart
-    localStorage.removeItem("yahin_cart");
-
-    router.push("/order-confirmation");
-  };
+  /* =============================
+     UI
+  ============================== */
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">
-        Checkout
-      </h1>
+    <div className="max-w-2xl mx-auto space-y-6">
+
+      {/* ADDRESS SECTION */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border">
+        <h2 className="font-semibold mb-3">
+          Select Delivery Address
+        </h2>
+
+        {addresses.length === 0 ? (
+          <>
+            <p className="text-sm text-gray-500 mb-3">
+              No saved addresses found.
+            </p>
+            <Link
+              href="/profile/address"
+              className="text-green-600 font-semibold"
+            >
+              + Add New Address
+            </Link>
+          </>
+        ) : (
+          addresses.map((addr) => (
+            <div
+              key={addr.id}
+              onClick={() => setSelectedAddress(addr)}
+              className={`border rounded-lg p-3 mb-2 cursor-pointer ${
+                selectedAddress?.id === addr.id
+                  ? "border-green-600 bg-green-50"
+                  : "border-gray-200"
+              }`}
+            >
+              <p className="font-medium">{addr.address}</p>
+            </div>
+          ))
+        )}
+      </div>
 
       {/* ORDER SUMMARY */}
-      <div className="bg-white p-4 rounded-lg border mb-6">
+      <div className="bg-white shadow-xl p-4 rounded-2xl shadow-sm ">
         <h2 className="font-semibold mb-4">
           Order Summary
         </h2>
 
         {cartItems.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center justify-between mb-3"
-          >
-            <div className="flex items-center">
-              <img
-                src={item.imageUrl}
-                alt={item.title}
-                className="w-12 h-12 object-cover rounded mr-3"
-              />
-              <div>
-                <p className="text-sm font-medium">
-                  {item.title}
-                </p>
-                <p className="text-xs text-gray-500">
-                  Size: {item.size}
-                </p>
-              </div>
+          <div key={item.id} className="flex gap-4 mb-4">
+            <img
+              src={item.imageUrl}
+              alt={item.title}
+              className="w-20 h-20 object-contain rounded-lg border"
+            />
+            <div>
+              <p className="font-medium">{item.title}</p>
+              <p className="text-sm text-gray-500">
+                Size: {item.size}
+              </p>
+              <p className="text-sm font-semibold">
+                ₹{item.price}
+              </p>
             </div>
-
-            <span className="text-sm font-semibold">
-              ₹{item.price}
-            </span>
           </div>
         ))}
 
-        <div className="flex justify-between font-bold mt-4">
+        <div className="flex justify-between font-bold mt-4 text-lg">
           <span>Total</span>
           <span>₹{totalAmount}</span>
         </div>
-
-        <p className="text-xs text-gray-500 mt-1">
-          Includes product & delivery charges
-        </p>
       </div>
 
-      {/* PAYMENT */}
-      <div className="bg-white p-4 rounded-lg border">
-        <h2 className="font-semibold mb-2">
+      {/* PAYMENT SECTION */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border text-center">
+        <h2 className="font-semibold mb-3">
           Pay using UPI
         </h2>
 
-        <p className="text-sm text-gray-600 mb-4">
-          Scan the QR code below and pay the exact amount.
-          After payment, click “I have paid”.
-        </p>
-
-        <div className="flex justify-center mb-4">
-          <img
-            src="/upi-qr.png"
-            alt="UPI QR Code"
-            className="w-48 h-48 object-contain border rounded"
-          />
-        </div>
-
-        <p className="text-sm text-center text-gray-700 mb-4">
-          Pay <strong>₹{totalAmount}</strong> to{" "}
-          <strong>Yahin</strong>
-        </p>
+        <img
+          src="/upi-qr.png"
+          alt="UPI QR"
+          className="w-48 h-48 mx-auto border rounded-lg mb-4"
+        />
 
         <button
-          onClick={handlePaymentConfirm}
-          className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold"
+          onClick={handlePlaceOrder}
+          disabled={placingOrder}
+          className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition disabled:opacity-50"
         >
-          I have paid
+          {placingOrder ? "Placing Order..." : "I have paid"}
         </button>
-
-        <p className="text-xs text-gray-500 mt-3 text-center">
-          Your order will be confirmed after payment verification.
-        </p>
       </div>
+
     </div>
   );
 }

@@ -2,19 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { signOut, onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import Link from "next/link";
 
 export default function ProfilePage() {
   const router = useRouter();
-
-  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  const [profile, setProfile] = useState(null);
+  const [addressCount, setAddressCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
@@ -23,43 +26,34 @@ export default function ProfilePage() {
         return;
       }
 
-      setUser(currentUser);
+      try {
+        setUser(currentUser);
 
-      const ref = doc(db, "users", currentUser.uid);
-      const snap = await getDoc(ref);
+        // Fetch profile
+        const userSnap = await getDoc(
+          doc(db, "users", currentUser.uid)
+        );
 
-      if (snap.exists()) {
-        const data = snap.data();
-        setName(data.name || "");
-        setPhone(data.phone || "");
-        setAddress(data.address || "");
+        if (userSnap.exists()) {
+          setProfile(userSnap.data());
+        }
+
+        // IMPORTANT: match checkout page subcollection name
+        const addrSnap = await getDocs(
+          collection(db, "users", currentUser.uid, "addresses")
+        );
+
+        setAddressCount(addrSnap.size);
+
+      } catch (error) {
+        console.error("Profile error:", error);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     });
 
     return () => unsub();
   }, [router]);
-
-  const handleSave = async () => {
-    if (!phone || !address) {
-      alert("Phone number and address are required");
-      return;
-    }
-
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        name,
-        phone,
-        address,
-        email: user.email,
-      },
-      { merge: true }
-    );
-
-    alert("Profile updated");
-  };
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -68,63 +62,83 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <p className="text-center mt-20">
-        Loading profile…
-      </p>
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
+      </div>
     );
   }
 
   return (
-    <div className="max-w-md mx-auto">
-      <h1 className="text-3xl font-bold mb-6">
-        My Profile
-      </h1>
+    <div className="min-h-screen flex justify-center px-4 pt-10">
+      <div className="w-full max-w-md">
 
-      <div className="space-y-4">
-        <input
-          type="text"
-          placeholder="Name"
-          className="w-full border rounded-full px-3 py-2"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+        {/* PROFILE HEADER */}
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center text-2xl font-bold text-green-600">
+            {profile?.name
+              ? profile.name.charAt(0).toUpperCase()
+              : user?.email?.charAt(0).toUpperCase()}
+          </div>
 
-        <input
-          type="email"
-          value={user.email}
-          disabled
-          className="w-full border rounded-full px-3 py-2 bg-gray-100"
-        />
+          <h2 className="mt-4 text-xl font-semibold">
+            {profile?.name || "User"}
+          </h2>
 
-        <input
-          type="tel"
-          placeholder="Phone number"
-          className="w-full border rounded-full px-3 py-2"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
+          <p className="text-sm text-gray-500">
+            {user?.email}
+          </p>
+        </div>
 
-        <textarea
-          placeholder="Delivery address"
-          className="w-full border rounded px-3 py-2"
-          rows={4}
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-        />
+        {/* OPTIONS */}
+        <div className="space-y-4">
 
-        <button
-          onClick={handleSave}
-          className="w-full bg-green-400 text-white py-2 rounded-full font-semibold"
-        >
-          Save Profile
-        </button>
+          <Link
+            href="/orders"
+            className="flex items-center gap-4 bg-gray-100 hover:bg-gray-200 transition px-5 py-4 rounded-full"
+          >
+            <span className="text-xl">📦</span>
+            <span className="text-lg font-medium">Orders</span>
+          </Link>
 
-        <button
-          onClick={handleLogout}
-          className="w-full border bg-red-500 border-red-500 text-white py-2 rounded-full"
-        >
-          Logout
-        </button>
+          <Link
+            href="/profile/address"
+            className="flex items-center gap-4 bg-gray-100 hover:bg-gray-200 transition px-5 py-4 rounded-full"
+          >
+            <span className="text-xl">📍</span>
+            <span className="text-lg font-medium">
+              Saved Addresses ({addressCount})
+            </span>
+          </Link>
+
+          <Link
+            href="/profile/edit"
+            className="flex items-center gap-4 bg-gray-100 hover:bg-gray-200 transition px-5 py-4 rounded-full"
+          >
+            <span className="text-xl">⚙️</span>
+            <span className="text-lg font-medium">
+              Manage Account
+            </span>
+          </Link>
+
+          <Link
+            href="/cart"
+            className="flex items-center gap-4 bg-gray-100 hover:bg-gray-200 transition px-5 py-4 rounded-full"
+          >
+            <span className="text-xl">🛒</span>
+            <span className="text-lg font-medium">Cart</span>
+          </Link>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-4 w-full bg-red-500 hover:bg-red-600 transition px-5 py-4 rounded-full mt-6"
+          >
+            <span className="text-lg font-medium text-white">
+              Logout
+            </span>
+          </button>
+
+        </div>
+
       </div>
     </div>
   );

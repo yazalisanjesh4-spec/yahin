@@ -59,6 +59,8 @@ export default function ProductDetailPage() {
         />
       </div>
 
+      <p className="*text-sm text-gray-400">* The products shown above are actual images from the shop</p>
+
       {/* PRODUCT DETAILS */}
       <div className="mt-6 space-y-3">
         <p className="text-lg font-semibold">

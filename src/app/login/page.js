@@ -1,78 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithPopup,
-} from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
 
-  const emailLogin = async () => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/address");
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  const googleLogin = async () => {
+  const handleGoogleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-      router.push("/address");
-    } catch (err) {
-      alert(err.message);
+
+      // After login → go to profile page
+      router.push("/profile");
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Login failed. Please try again.");
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white p-6 rounded-xl border">
-        <h1 className="text-2xl font-bold text-center mb-6">
-          Login to Yahin
+      <div className="bg-white shadow-xl  rounded-2xl p-8 w-full max-w-sm text-center">
+        <h1 className="text-3xl font-extrabold text-blue-400 mb-2">
+          Yahin
         </h1>
 
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full border rounded px-3 py-2 mb-3"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full border rounded px-3 py-2 mb-4"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <p className="text-sm text-gray-500 mb-6">
+          Sign in to order clothes delivered in under 90 minutes
+        </p>
 
         <button
-          onClick={emailLogin}
-          className="w-full bg-green-600 text-white py-3 rounded font-semibold"
+          onClick={handleGoogleLogin}
+          className="w-full flex items-center justify-center gap-3 bg-white border rounded-full py-3 font-medium hover:bg-gray-50 transition"
         >
-          Login
-        </button>
-
-        <div className="my-4 text-center text-gray-400">
-          OR
-        </div>
-
-        <button
-          onClick={googleLogin}
-          className="w-full border py-3 rounded font-semibold"
-        >
+          <img
+            src="https://www.svgrepo.com/show/475656/google-color.svg"
+            alt="Google"
+            className="w-5 h-5"
+          />
           Continue with Google
         </button>
+
+        <p className="text-xs text-gray-400 mt-6">
+          By continuing, you agree to use Yahin responsibly.
+        </p>
       </div>
     </div>
   );

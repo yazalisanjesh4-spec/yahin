@@ -64,7 +64,7 @@ export default function UserOrdersPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">
-        My Orders
+        My orders 👜
       </h1>
 
       {loading && (
@@ -81,7 +81,7 @@ export default function UserOrdersPage() {
         {orders.map((order) => (
           <div
             key={order.id}
-            className="bg-white border rounded-lg p-4"
+            className="bg-white shadow-xl rounded-2xl p-4"
           >
             <p className="text-sm text-gray-500">
               Order ID: {order.id}
